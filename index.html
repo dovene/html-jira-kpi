@@ -450,19 +450,56 @@
 
             async makeRequest(path, options = {}) {
                 const jiraUrl = `${this.baseUrl}${path}`;
-                const url = this.getProxyUrl(jiraUrl);
                 
-                const headers = {
-                    'Authorization': `Basic ${this.auth}`,
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    ...options.headers
+                let url, headers;
+                
+                if (this.proxyMode === 'extension') {
+                    // Direct request with extension
+                    url = jiraUrl;
+                    headers = {
+                        'Authorization': `Basic ${this.auth}`,
+                        'Accept': 'application/json',
+                        ...options.headers
+                    };
+                } else {
+                    // Using CORS proxy
+                    url = this.getProxyUrl(jiraUrl);
+                    
+                    // For CORS proxies, we need to pass auth via URL or specific headers
+                    if (this.proxyMode === 'corsproxy') {
+                        // CorsProxy passes all headers through
+                        headers = {
+                            'Authorization': `Basic ${this.auth}`,
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            ...options.headers
+                        };
+                    } else {
+                        // AllOrigins and others - try to pass auth in URL
+                        headers = {
+                            'Accept': 'application/json',
+                            ...options.headers
+                        };
+                        
+                        // Add auth to URL for AllOrigins
+                        if (this.proxyMode === 'allorigins') {
+                            const urlWithAuth = jiraUrl.replace('https://', `https://${this.auth}@`);
+                            url = `https://api.allorigins.win/raw?url=${encodeURIComponent(urlWithAuth)}`;
+                        }
+                    }
+                }
+
+                const fetchOptions = {
+                    method: options.method || 'GET',
+                    headers: headers
                 };
 
-                const response = await fetch(url, {
-                    ...options,
-                    headers
-                });
+                // Only add body for non-GET requests
+                if (options.body && fetchOptions.method !== 'GET') {
+                    fetchOptions.body = options.body;
+                }
+
+                const response = await fetch(url, fetchOptions);
 
                 if (!response.ok) {
                     const errorText = await response.text();
@@ -478,23 +515,28 @@
                 let total = 0;
 
                 do {
-                    const data = await this.makeRequest('/rest/api/3/search', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            jql: jql,
-                            startAt: startAt,
-                            maxResults: maxResults,
-                            fields: ['key', 'summary', 'status', 'issuetype', 'priority', 'created', 
-                                   'updated', 'assignee', 'reporter', 'project', 'resolution', 
-                                   'resolutiondate', 'timespent', 'timeoriginalestimate', 
-                                   'timeestimate', 'aggregatetimespent', 'parent', 'labels'],
-                            expand: ['changelog']
-                        })
+                    // Use GET instead of POST to avoid XSRF issues with CORS proxies
+                    const fields = 'key,summary,status,issuetype,priority,created,updated,assignee,reporter,project,resolution,resolutiondate,timespent,timeoriginalestimate,timeestimate,aggregatetimespent,parent,labels';
+                    const params = new URLSearchParams({
+                        jql: jql,
+                        startAt: startAt,
+                        maxResults: maxResults,
+                        fields: fields,
+                        expand: 'changelog'
+                    });
+
+                    const data = await this.makeRequest(`/rest/api/3/search?${params.toString()}`, {
+                        method: 'GET'
                     });
 
                     issues.push(...data.issues);
                     total = data.total;
                     startAt += maxResults;
+                    
+                    // Add a small delay to avoid rate limiting
+                    if (startAt < total) {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
                 } while (startAt < total);
 
                 return issues;
