@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jira KPI Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #2d3748;
+            margin-bottom: 20px;
+            font-size: 32px;
+        }
+
+        .config-section {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        input, select {
+            padding: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #38a169;
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e53e3e;
+        }
+
+        .loading {
+            background: #bee3f8;
+            color: #2c5282;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .error.show {
+            display: block;
+        }
+
+        .success {
+            background: #c6f6d5;
+            color: #2f855a;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .success.show {
+            display: block;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .kpi-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .kpi-label {
+            color: #718096;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .kpi-value {
+            color: #2d3748;
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .kpi-subtitle {
+            color: #a0aec0;
+            font-size: 12px;
+        }
+
+        .chart-container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .chart-title {
+            color: #2d3748;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .bar-chart {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .bar-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .bar-label {
+            min-width: 80px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .bar-container {
+            flex: 1;
+            height: 30px;
+            background: #edf2f7;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 15px;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 10px;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .metadata {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .metadata-title {
+            color: #2d3748;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .metadata-item {
+            padding: 10px;
+            background: #f7fafc;
+            border-radius: 6px;
+        }
+
+        .metadata-label {
+            color: #718096;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+
+        .metadata-value {
+            color: #2d3748;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        #results {
+            display: none;
+        }
+
+        #results.show {
+            display: block;
+        }
+
+        .help-text {
+            color: #718096;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        .password-group {
+            position: relative;
+        }
+
+        .password-group input[type="password"] {
+            padding-right: 40px;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 10px;
+            top: 35px;
+            cursor: pointer;
+            color: #718096;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Jira KPI Dashboard</h1>
+            
+            <div class="config-section">
+                <h3 style="margin-bottom: 15px; color: #2d3748;">Jira Configuration</h3>
+                <div class="config-grid">
+                    <div class="input-group">
+                        <label for="jiraUrl">Jira Base URL</label>
+                        <input type="text" id="jiraUrl" placeholder="https://your-domain.atlassian.net" value="">
+                        <span class="help-text">Your Jira instance URL</span>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="jiraEmail">Email</label>
+                        <input type="email" id="jiraEmail" placeholder="your-email@domain.com" value="">
+                        <span class="help-text">Your Jira account email</span>
+                    </div>
+                    
+                    <div class="input-group password-group">
+                        <label for="jiraToken">API Token</label>
+                        <input type="password" id="jiraToken" placeholder="Your Jira API token" value="">
+                        <span class="toggle-password" onclick="togglePassword()">Show</span>
+                        <span class="help-text">Generate from <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank">Atlassian</a></span>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="proxyMode">CORS Proxy</label>
+                        <select id="proxyMode">
+                            <option value="allorigins">AllOrigins (Recommended)</option>
+                            <option value="corsproxy">CorsProxy.io</option>
+                            <option value="corsanywhere">CORS Anywhere (self-host)</option>
+                            <option value="extension">Browser Extension</option>
+                        </select>
+                        <span class="help-text">Choose CORS bypass method</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="config-section">
+                <h3 style="margin-bottom: 15px; color: #2d3748;">Query Configuration</h3>
+                <div class="config-grid">
+                    <div class="input-group">
+                        <label for="dataType">Data Type</label>
+                        <select id="dataType" onchange="updateKeysPlaceholder()">
+                            <option value="projects">Projects</option>
+                            <option value="labels">Labels</option>
+                            <option value="epics">Epics</option>
+                            <option value="global">Global (All Issues)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="keys">Keys/Identifier</label>
+                        <input type="text" id="keys" placeholder="e.g., PROJ1,PROJ2">
+                        <span class="help-text">Comma-separated values (leave empty for global)</span>
+                    </div>
+                </div>
+
+                <div class="config-grid">
+                    <div class="input-group">
+                        <label for="startDate">Start Date</label>
+                        <input type="date" id="startDate">
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="endDate">End Date</label>
+                        <input type="date" id="endDate">
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-primary" onclick="fetchAndCalculateKpis()">Calculate KPIs</button>
+                    <button class="btn-secondary" onclick="testConnection()">Test Connection</button>
+                    <button class="btn-danger" onclick="clearResults()">Clear Results</button>
+                </div>
+            </div>
+
+            <div id="loadingMessage" class="loading"></div>
+            <div id="errorMessage" class="error"></div>
+            <div id="successMessage" class="success"></div>
+        </div>
+
+        <div id="results">
+            <div class="dashboard" id="aggregateKpis"></div>
+            <div class="chart-container">
+                <h2 class="chart-title">Monthly Trends</h2>
+                <div class="bar-chart" id="monthlyChart"></div>
+            </div>
+            <div class="metadata">
+                <h3 class="metadata-title">Metadata</h3>
+                <div class="metadata-grid" id="metadataGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Jira API Client (with multiple proxy options)
+        class JiraClient {
+            constructor(baseUrl, email, apiToken, proxyMode = 'allorigins') {
+                this.baseUrl = baseUrl.replace(/\/$/, '');
+                this.auth = btoa(`${email}:${apiToken}`);
+                this.proxyMode = proxyMode;
+            }
+
+            getProxyUrl(jiraUrl) {
+                switch(this.proxyMode) {
+                    case 'allorigins':
+                        return `https://api.allorigins.win/raw?url=${encodeURIComponent(jiraUrl)}`;
+                    case 'corsproxy':
+                        return `https://corsproxy.io/?${encodeURIComponent(jiraUrl)}`;
+                    case 'corsanywhere':
+                        return `https://cors-anywhere.herokuapp.com/${jiraUrl}`;
+                    case 'extension':
+                        // Direct call - requires browser extension like "CORS Unblock"
+                        return jiraUrl;
+                    default:
+                        return jiraUrl;
+                }
+            }
+
+            async makeRequest(path, options = {}) {
+                const jiraUrl = `${this.baseUrl}${path}`;
+                const url = this.getProxyUrl(jiraUrl);
+                
+                const headers = {
+                    'Authorization': `Basic ${this.auth}`,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                };
+
+                const response = await fetch(url, {
+                    ...options,
+                    headers
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Jira API error: ${response.status} - ${errorText}`);
+                }
+
+                return await response.json();
+            }
+
+            async fetchIssues(jql, maxResults = 100) {
+                const issues = [];
+                let startAt = 0;
+                let total = 0;
+
+                do {
+                    const data = await this.makeRequest('/rest/api/3/search', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            jql: jql,
+                            startAt: startAt,
+                            maxResults: maxResults,
+                            fields: ['key', 'summary', 'status', 'issuetype', 'priority', 'created', 
+                                   'updated', 'assignee', 'reporter', 'project', 'resolution', 
+                                   'resolutiondate', 'timespent', 'timeoriginalestimate', 
+                                   'timeestimate', 'aggregatetimespent', 'parent', 'labels'],
+                            expand: ['changelog']
+                        })
+                    });
+
+                    issues.push(...data.issues);
+                    total = data.total;
+                    startAt += maxResults;
+                } while (startAt < total);
+
+                return issues;
+            }
+
+            async fetchProjects() {
+                return await this.makeRequest('/rest/api/3/project', {
+                    method: 'GET'
+                });
+            }
+        }
+
+        // KPI Calculator
+        class KpiCalculator {
+            constructor() {
+                this.COMPLETION_STATUSES = new Set(['terminé', 'à livrer', 'done', 'closed', 'resolved']);
+                this.IN_PROGRESS_STATUSES = new Set(['in progress', 'doing', 'en cours', 'in development']);
+                this.SECONDS_IN_WORK_DAY = 8 * 3600;
+                this.MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            }
+
+            calculateKpis(issues, startDate, endDate, metadata = {}) {
+                const processedIssues = issues.map(issue => this.processIssue(issue)).filter(i => i);
+                const monthlyKpis = this.calculateMonthlyKpis(processedIssues, startDate, endDate);
+                const aggregateKpi = this.calculateAggregateKpis(monthlyKpis);
+
+                return {
+                    monthlyKpis,
+                    aggregateKpi,
+                    metadata: {
+                        ...metadata,
+                        totalIssuesProcessed: processedIssues.length,
+                        startDate: startDate.toISOString().split('T')[0],
+                        endDate: endDate.toISOString().split('T')[0]
+                    }
+                };
+            }
+
+            processIssue(issue) {
+                try {
+                    const fields = issue.fields;
+                    const processed = {
+                        key: issue.key,
+                        issueType: fields.issuetype?.name || '',
+                        status: fields.status?.name || '',
+                        created: new Date(fields.created),
+                        updated: new Date(fields.updated),
+                        resolutionDate: fields.resolutiondate ? new Date(fields.resolutiondate) : null,
+                        projectKey: fields.project?.key || '',
+                        projectName: fields.project?.name || '',
+                        timeSpentSeconds: fields.timespent || null,
+                        aggregateTimeSpentSeconds: fields.aggregatetimespent || null
+                    };
+
+                    // Find status transition dates from changelog
+                    processed.inProgressDate = this.findStatusTransitionDate(issue.changelog, this.IN_PROGRESS_STATUSES);
+                    processed.completionDate = this.findStatusTransitionDate(issue.changelog, this.COMPLETION_STATUSES);
+                    
+                    if (!processed.completionDate) {
+                        processed.completionDate = processed.resolutionDate;
+                    }
+
+                    processed.isCompleted = this.COMPLETION_STATUSES.has(processed.status.toLowerCase());
+                    processed.isBug = processed.issueType.toLowerCase() === 'bug';
+
+                    // Calculate times
+                    this.calculateTimes(processed);
+
+                    return processed;
+                } catch (error) {
+                    console.error('Error processing issue:', error);
+                    return null;
+                }
+            }
+
+            findStatusTransitionDate(changelog, targetStatuses) {
+                if (!changelog?.histories) return null;
+
+                let firstTransition = null;
+                for (const history of changelog.histories) {
+                    for (const item of history.items || []) {
+                        if (item.field === 'status' && targetStatuses.has(item.toString?.toLowerCase())) {
+                            const transitionDate = new Date(history.created);
+                            if (!firstTransition || transitionDate < firstTransition) {
+                                firstTransition = transitionDate;
+                            }
+                        }
+                    }
+                }
+                return firstTransition;
+            }
+
+            calculateTimes(issue) {
+                const completionDate = issue.completionDate || issue.updated;
+
+                if (issue.created && completionDate) {
+                    const days = Math.floor((completionDate - issue.created) / (1000 * 60 * 60 * 24));
+                    issue.leadTimeDays = Math.max(0, days);
+                }
+
+                if (issue.inProgressDate && completionDate) {
+                    const days = Math.floor((completionDate - issue.inProgressDate) / (1000 * 60 * 60 * 24));
+                    issue.cycleTimeDays = Math.max(0, days);
+                }
+            }
+
+            calculateMonthlyKpis(issues, startDate, endDate) {
+                const monthlyKpis = [];
+                let current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+                const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+                while (current <= end) {
+                    const month = current.getMonth();
+                    const year = current.getFullYear();
+
+                    const completedThisMonth = issues.filter(i => 
+                        i.isCompleted && 
+                        i.completionDate && 
+                        i.completionDate.getMonth() === month && 
+                        i.completionDate.getFullYear() === year
+                    );
+
+                    const bugsCompleted = completedThisMonth.filter(i => i.isBug).length;
+                    const bugsCreated = issues.filter(i => 
+                        i.isBug && 
+                        i.created.getMonth() === month && 
+                        i.created.getFullYear() === year
+                    ).length;
+
+                    const avgLeadTime = completedThisMonth.length > 0
+                        ? completedThisMonth.reduce((sum, i) => sum + (i.leadTimeDays || 0), 0) / completedThisMonth.length
+                        : 0;
+
+                    const totalTimeSpentSeconds = completedThisMonth.reduce((sum, i) => 
+                        sum + (i.aggregateTimeSpentSeconds || i.timeSpentSeconds || 0), 0
+                    );
+                    const totalTimeSpentDays = totalTimeSpentSeconds / this.SECONDS_IN_WORK_DAY;
+
+                    monthlyKpis.push({
+                        month: `${this.MONTH_NAMES[month]} '${year % 100}`,
+                        monthNumber: month + 1,
+                        issuesCompleted: completedThisMonth.length,
+                        bugsCompleted,
+                        bugsCreated,
+                        avgLeadTimeDays: Math.round(avgLeadTime * 100) / 100,
+                        timeTracking: {
+                            totalTimeSpentDays: Math.round(totalTimeSpentDays * 100) / 100
+                        }
+                    });
+
+                    current.setMonth(current.getMonth() + 1);
+                }
+
+                return monthlyKpis;
+            }
+
+            calculateAggregateKpis(monthlyKpis) {
+                const activeMonths = monthlyKpis.filter(m => m.issuesCompleted > 0 || m.bugsCreated > 0);
+
+                if (activeMonths.length === 0) {
+                    return {
+                        avgIssuesCompleted: 0,
+                        avgBugsCreated: 0,
+                        avgBugsCompleted: 0,
+                        avgLeadTimeDays: 0,
+                        totalIssuesCompleted: 0,
+                        totalBugsCreated: 0,
+                        totalBugsCompleted: 0,
+                        totalTimeSpentDays: 0
+                    };
+                }
+
+                const totalIssuesCompleted = monthlyKpis.reduce((sum, m) => sum + m.issuesCompleted, 0);
+                const totalBugsCreated = monthlyKpis.reduce((sum, m) => sum + m.bugsCreated, 0);
+                const totalBugsCompleted = monthlyKpis.reduce((sum, m) => sum + m.bugsCompleted, 0);
+                const totalTimeSpentDays = monthlyKpis.reduce((sum, m) => 
+                    sum + (m.timeTracking?.totalTimeSpentDays || 0), 0
+                );
+
+                return {
+                    avgIssuesCompleted: Math.round((totalIssuesCompleted / activeMonths.length) * 100) / 100,
+                    avgBugsCreated: Math.round((totalBugsCreated / activeMonths.length) * 100) / 100,
+                    avgBugsCompleted: Math.round((totalBugsCompleted / activeMonths.length) * 100) / 100,
+                    avgLeadTimeDays: Math.round((activeMonths.reduce((sum, m) => sum + m.avgLeadTimeDays, 0) / activeMonths.length) * 100) / 100,
+                    totalIssuesCompleted,
+                    totalBugsCreated,
+                    totalBugsCompleted,
+                    totalTimeSpentDays: Math.round(totalTimeSpentDays * 100) / 100
+                };
+            }
+        }
+
+        // UI Functions
+        function togglePassword() {
+            const input = document.getElementById('jiraToken');
+            const toggle = document.querySelector('.toggle-password');
+            if (input.type === 'password') {
+                input.type = 'text';
+                toggle.textContent = 'Hide';
+            } else {
+                input.type = 'password';
+                toggle.textContent = 'Show';
+            }
+        }
+
+        function updateKeysPlaceholder() {
+            const dataType = document.getElementById('dataType').value;
+            const keysInput = document.getElementById('keys');
+            
+            const placeholders = {
+                'projects': 'e.g., PROJ1,PROJ2',
+                'labels': 'e.g., frontend,backend',
+                'epics': 'e.g., EPIC-1,EPIC-2',
+                'global': 'Leave empty for all issues'
+            };
+            
+            keysInput.placeholder = placeholders[dataType] || '';
+            keysInput.value = '';
+        }
+
+        function showLoading(message) {
+            hideAllMessages();
+            const el = document.getElementById('loadingMessage');
+            el.textContent = message;
+            el.classList.add('show');
+        }
+
+        function showError(message) {
+            hideAllMessages();
+            const el = document.getElementById('errorMessage');
+            el.textContent = message;
+            el.classList.add('show');
+        }
+
+        function showSuccess(message) {
+            hideAllMessages();
+            const el = document.getElementById('successMessage');
+            el.textContent = message;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 5000);
+        }
+
+        function hideAllMessages() {
+            document.getElementById('loadingMessage').classList.remove('show');
+            document.getElementById('errorMessage').classList.remove('show');
+            document.getElementById('successMessage').classList.remove('show');
+        }
+
+        async function testConnection() {
+            const jiraUrl = document.getElementById('jiraUrl').value.trim();
+            const jiraEmail = document.getElementById('jiraEmail').value.trim();
+            const jiraToken = document.getElementById('jiraToken').value.trim();
+            const proxyMode = document.getElementById('proxyMode').value;
+
+            if (!jiraUrl || !jiraEmail || !jiraToken) {
+                showError('Please fill in all Jira configuration fields');
+                return;
+            }
+
+            showLoading('Testing connection to Jira...');
+
+            try {
+                const client = new JiraClient(jiraUrl, jiraEmail, jiraToken, proxyMode);
+                const projects = await client.fetchProjects();
+                showSuccess(`Connected successfully! Found ${projects.length} projects.`);
+            } catch (error) {
+                showError(`Connection failed: ${error.message}`);
+            }
+        }
+
+        async function fetchAndCalculateKpis() {
+            const jiraUrl = document.getElementById('jiraUrl').value.trim();
+            const jiraEmail = document.getElementById('jiraEmail').value.trim();
+            const jiraToken = document.getElementById('jiraToken').value.trim();
+            const proxyMode = document.getElementById('proxyMode').value;
+            const dataType = document.getElementById('dataType').value;
+            const keys = document.getElementById('keys').value.trim();
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+
+            if (!jiraUrl || !jiraEmail || !jiraToken) {
+                showError('Please fill in all Jira configuration fields');
+                return;
+            }
+
+            if (!startDate || !endDate) {
+                showError('Please select start and end dates');
+                return;
+            }
+
+            if (dataType !== 'global' && !keys) {
+                showError(`Please enter ${dataType} keys`);
+                return;
+            }
+
+            showLoading('Fetching issues from Jira...');
+
+            try {
+                const client = new JiraClient(jiraUrl, jiraEmail, jiraToken, proxyMode);
+                const calculator = new KpiCalculator();
+                
+                const start = new Date(startDate);
+                const end = new Date(endDate);
+                
+                let jql = `created >= '${startDate}' AND created <= '${endDate}' ORDER BY created DESC`;
+                
+                if (dataType === 'projects') {
+                    const projectKeys = keys.split(',').map(k => k.trim()).filter(k => k);
+                    jql = `project IN (${projectKeys.map(k => `'${k}'`).join(',')}) AND ${jql}`;
+                } else if (dataType === 'labels') {
+                    const labels = keys.split(',').map(k => k.trim()).filter(k => k);
+                    jql = `(${labels.map(l => `labels = "${l}"`).join(' OR ')}) AND ${jql}`;
+                } else if (dataType === 'epics') {
+                    const epicKeys = keys.split(',').map(k => k.trim()).filter(k => k);
+                    jql = `(${epicKeys.map(k => `parent = ${k}`).join(' OR ')}) AND ${jql}`;
+                }
+
+                showLoading('Fetching issues... This may take a moment for large datasets.');
+                const issues = await client.fetchIssues(jql);
+                
+                showLoading(`Calculating KPIs for ${issues.length} issues...`);
+                const kpiData = calculator.calculateKpis(issues, start, end, {
+                    calculationType: dataType,
+                    identifier: keys || 'all',
+                    totalIssuesFetched: issues.length
+                });
+
+                displayResults(kpiData);
+                showSuccess(`Successfully calculated KPIs for ${issues.length} issues!`);
+            } catch (error) {
+                showError(`Error: ${error.message}`);
+                console.error('Full error:', error);
+            }
+        }
+
+        function displayResults(data) {
+            document.getElementById('results').classList.add('show');
+            displayAggregateKpis(data.aggregateKpi);
+            displayMonthlyChart(data.monthlyKpis);
+            displayMetadata(data.metadata);
+        }
+
+        function displayAggregateKpis(aggregate) {
+            const container = document.getElementById('aggregateKpis');
+            container.innerHTML = '';
+
+            const kpis = [
+                { label: 'Total Issues', value: aggregate.totalIssuesCompleted, subtitle: 'Completed' },
+                { label: 'Avg Issues/Month', value: aggregate.avgIssuesCompleted.toFixed(1), subtitle: 'Average' },
+                { label: 'Total Bugs', value: aggregate.totalBugsCreated, subtitle: 'Created' },
+                { label: 'Bugs Fixed', value: aggregate.totalBugsCompleted, subtitle: 'Completed' },
+                { label: 'Lead Time', value: aggregate.avgLeadTimeDays.toFixed(1), subtitle: 'Days (avg)' },
+                { label: 'Time Spent', value: aggregate.totalTimeSpentDays.toFixed(1), subtitle: 'Days (total)' }
+            ];
+
+            kpis.forEach(kpi => {
+                const card = document.createElement('div');
+                card.className = 'kpi-card';
+                card.innerHTML = `
+                    <div class="kpi-label">${kpi.label}</div>
+                    <div class="kpi-value">${kpi.value}</div>
+                    <div class="kpi-subtitle">${kpi.subtitle}</div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function displayMonthlyChart(monthlyKpis) {
+            const container = document.getElementById('monthlyChart');
+            container.innerHTML = '';
+
+            if (!monthlyKpis || monthlyKpis.length === 0) {
+                container.innerHTML = '<p style="color: #a0aec0;">No monthly data available</p>';
+                return;
+            }
+
+            const maxIssues = Math.max(...monthlyKpis.map(m => m.issuesCompleted));
+
+            monthlyKpis.forEach(month => {
+                const barItem = document.createElement('div');
+                barItem.className = 'bar-item';
+                
+                const percentage = maxIssues > 0 ? (month.issuesCompleted / maxIssues) * 100 : 0;
+                
+                barItem.innerHTML = `
+                    <div class="bar-label">${month.month}</div>
+                    <div class="bar-container">
+                        <div class="bar-fill" style="width: ${percentage}%">
+                            ${month.issuesCompleted}
+                        </div>
+                    </div>
+                `;
+                container.appendChild(barItem);
+            });
+        }
+
+        function displayMetadata(metadata) {
+            const container = document.getElementById('metadataGrid');
+            container.innerHTML = '';
+
+            if (!metadata) return;
+
+            const displayKeys = [
+                'calculationType',
+                'totalIssuesProcessed',
+                'totalIssuesFetched',
+                'startDate',
+                'endDate',
+                'identifier'
+            ];
+
+            displayKeys.forEach(key => {
+                if (metadata[key] !== undefined) {
+                    const item = document.createElement('div');
+                    item.className = 'metadata-item';
+                    item.innerHTML = `
+                        <div class="metadata-label">${formatLabel(key)}</div>
+                        <div class="metadata-value">${metadata[key]}</div>
+                    `;
+                    container.appendChild(item);
+                }
+            });
+        }
+
+        function formatLabel(key) {
+            return key.replace(/([A-Z])/g, ' $1')
+                     .replace(/^./, str => str.toUpperCase())
+                     .trim();
+        }
+
+        function clearResults() {
+            document.getElementById('results').classList.remove('show');
+            hideAllMessages();
+        }
+
+        // Set default dates (last 6 months)
+        window.onload = function() {
+            const today = new Date();
+            const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 6, today.getDate());
+            
+            document.getElementById('endDate').valueAsDate = today;
+            document.getElementById('startDate').valueAsDate = sixMonthsAgo;
+        };
+    </script>
+</body>
+</html>
