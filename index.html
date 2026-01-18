@@ -356,12 +356,18 @@
                     <div class="input-group">
                         <label for="proxyMode">CORS Proxy</label>
                         <select id="proxyMode">
-                            <option value="allorigins">AllOrigins (Recommended)</option>
+                            <option value="extension">Browser Extension (Recommended)</option>
                             <option value="corsproxy">CorsProxy.io</option>
-                            <option value="corsanywhere">CORS Anywhere (self-host)</option>
-                            <option value="extension">Browser Extension</option>
+                            <option value="allorigins">AllOrigins</option>
+                            <option value="php">PHP Proxy (Self-hosted)</option>
                         </select>
                         <span class="help-text">Choose CORS bypass method</span>
+                    </div>
+
+                    <div class="input-group" id="phpProxyUrlGroup" style="display: none;">
+                        <label for="phpProxyUrl">PHP Proxy URL</label>
+                        <input type="text" id="phpProxyUrl" placeholder="https://yoursite.com/jira-proxy.php" value="">
+                        <span class="help-text">URL of your PHP proxy script</span>
                     </div>
                 </div>
             </div>
@@ -426,10 +432,11 @@
     <script>
         // Jira API Client (with multiple proxy options)
         class JiraClient {
-            constructor(baseUrl, email, apiToken, proxyMode = 'allorigins') {
+            constructor(baseUrl, email, apiToken, proxyMode = 'extension', phpProxyUrl = '') {
                 this.baseUrl = baseUrl.replace(/\/$/, '');
                 this.auth = btoa(`${email}:${apiToken}`);
                 this.proxyMode = proxyMode;
+                this.phpProxyUrl = phpProxyUrl;
             }
 
             getProxyUrl(jiraUrl) {
@@ -438,10 +445,9 @@
                         return `https://api.allorigins.win/raw?url=${encodeURIComponent(jiraUrl)}`;
                     case 'corsproxy':
                         return `https://corsproxy.io/?${encodeURIComponent(jiraUrl)}`;
-                    case 'corsanywhere':
-                        return `https://cors-anywhere.herokuapp.com/${jiraUrl}`;
+                    case 'php':
+                        return `${this.phpProxyUrl}?url=${encodeURIComponent(jiraUrl)}`;
                     case 'extension':
-                        // Direct call - requires browser extension like "CORS Unblock"
                         return jiraUrl;
                     default:
                         return jiraUrl;
@@ -461,32 +467,23 @@
                         'Accept': 'application/json',
                         ...options.headers
                     };
-                } else {
-                    // Using CORS proxy
+                } else if (this.proxyMode === 'php') {
+                    // PHP proxy - send auth via custom header
                     url = this.getProxyUrl(jiraUrl);
-                    
-                    // For CORS proxies, we need to pass auth via URL or specific headers
-                    if (this.proxyMode === 'corsproxy') {
-                        // CorsProxy passes all headers through
-                        headers = {
-                            'Authorization': `Basic ${this.auth}`,
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest',
-                            ...options.headers
-                        };
-                    } else {
-                        // AllOrigins and others - try to pass auth in URL
-                        headers = {
-                            'Accept': 'application/json',
-                            ...options.headers
-                        };
-                        
-                        // Add auth to URL for AllOrigins
-                        if (this.proxyMode === 'allorigins') {
-                            const urlWithAuth = jiraUrl.replace('https://', `https://${this.auth}@`);
-                            url = `https://api.allorigins.win/raw?url=${encodeURIComponent(urlWithAuth)}`;
-                        }
-                    }
+                    headers = {
+                        'X-Jira-Auth': this.auth,
+                        'Accept': 'application/json',
+                        ...options.headers
+                    };
+                } else {
+                    // Other CORS proxies
+                    url = this.getProxyUrl(jiraUrl);
+                    headers = {
+                        'Authorization': `Basic ${this.auth}`,
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        ...options.headers
+                    };
                 }
 
                 const fetchOptions = {
@@ -494,19 +491,44 @@
                     headers: headers
                 };
 
-                // Only add body for non-GET requests
                 if (options.body && fetchOptions.method !== 'GET') {
                     fetchOptions.body = options.body;
                 }
 
-                const response = await fetch(url, fetchOptions);
+                try {
+                    const response = await fetch(url, fetchOptions);
 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Jira API error: ${response.status} - ${errorText}`);
+                    // Get response text first to handle both JSON and error cases
+                    const responseText = await response.text();
+                    
+                    if (!response.ok) {
+                        console.error('Jira API Error:', response.status, responseText);
+                        
+                        // Try to parse as JSON to get detailed error
+                        try {
+                            const errorData = JSON.parse(responseText);
+                            const errorMsg = errorData.errorMessages?.join(', ') || 
+                                           errorData.message || 
+                                           responseText;
+                            throw new Error(`Jira API error (${response.status}): ${errorMsg}`);
+                        } catch (parseError) {
+                            throw new Error(`Jira API error (${response.status}): ${responseText}`);
+                        }
+                    }
+
+                    // Parse successful response
+                    try {
+                        return JSON.parse(responseText);
+                    } catch (parseError) {
+                        console.error('Failed to parse response:', responseText);
+                        throw new Error('Invalid JSON response from Jira API');
+                    }
+                } catch (error) {
+                    if (error.message.includes('Jira API error')) {
+                        throw error;
+                    }
+                    throw new Error(`Network error: ${error.message}`);
                 }
-
-                return await response.json();
             }
 
             async fetchIssues(jql, maxResults = 100) {
@@ -515,13 +537,12 @@
                 let total = 0;
 
                 do {
-                    // Use GET instead of POST to avoid XSRF issues with CORS proxies
-                    const fields = 'key,summary,status,issuetype,priority,created,updated,assignee,reporter,project,resolution,resolutiondate,timespent,timeoriginalestimate,timeestimate,aggregatetimespent,parent,labels';
+                    // Use correct API endpoint with proper parameters
                     const params = new URLSearchParams({
                         jql: jql,
-                        startAt: startAt,
-                        maxResults: maxResults,
-                        fields: fields,
+                        startAt: startAt.toString(),
+                        maxResults: maxResults.toString(),
+                        fields: 'key,summary,status,issuetype,priority,created,updated,assignee,reporter,project,resolution,resolutiondate,timespent,timeoriginalestimate,timeestimate,aggregatetimespent,parent,labels',
                         expand: 'changelog'
                     });
 
@@ -529,15 +550,21 @@
                         method: 'GET'
                     });
 
+                    // Check if response has issues
+                    if (!data || !data.issues || !Array.isArray(data.issues)) {
+                        console.error('Invalid response from Jira:', data);
+                        throw new Error('Invalid response from Jira API: ' + JSON.stringify(data));
+                    }
+
                     issues.push(...data.issues);
-                    total = data.total;
+                    total = data.total || 0;
                     startAt += maxResults;
                     
                     // Add a small delay to avoid rate limiting
                     if (startAt < total) {
                         await new Promise(resolve => setTimeout(resolve, 500));
                     }
-                } while (startAt < total);
+                } while (startAt < total && total > 0);
 
                 return issues;
             }
@@ -790,16 +817,22 @@
             const jiraEmail = document.getElementById('jiraEmail').value.trim();
             const jiraToken = document.getElementById('jiraToken').value.trim();
             const proxyMode = document.getElementById('proxyMode').value;
+            const phpProxyUrl = document.getElementById('phpProxyUrl').value.trim();
 
             if (!jiraUrl || !jiraEmail || !jiraToken) {
                 showError('Please fill in all Jira configuration fields');
                 return;
             }
 
+            if (proxyMode === 'php' && !phpProxyUrl) {
+                showError('Please enter your PHP proxy URL');
+                return;
+            }
+
             showLoading('Testing connection to Jira...');
 
             try {
-                const client = new JiraClient(jiraUrl, jiraEmail, jiraToken, proxyMode);
+                const client = new JiraClient(jiraUrl, jiraEmail, jiraToken, proxyMode, phpProxyUrl);
                 const projects = await client.fetchProjects();
                 showSuccess(`Connected successfully! Found ${projects.length} projects.`);
             } catch (error) {
@@ -812,6 +845,7 @@
             const jiraEmail = document.getElementById('jiraEmail').value.trim();
             const jiraToken = document.getElementById('jiraToken').value.trim();
             const proxyMode = document.getElementById('proxyMode').value;
+            const phpProxyUrl = document.getElementById('phpProxyUrl').value.trim();
             const dataType = document.getElementById('dataType').value;
             const keys = document.getElementById('keys').value.trim();
             const startDate = document.getElementById('startDate').value;
@@ -819,6 +853,11 @@
 
             if (!jiraUrl || !jiraEmail || !jiraToken) {
                 showError('Please fill in all Jira configuration fields');
+                return;
+            }
+
+            if (proxyMode === 'php' && !phpProxyUrl) {
+                showError('Please enter your PHP proxy URL');
                 return;
             }
 
@@ -835,7 +874,7 @@
             showLoading('Fetching issues from Jira...');
 
             try {
-                const client = new JiraClient(jiraUrl, jiraEmail, jiraToken, proxyMode);
+                const client = new JiraClient(jiraUrl, jiraEmail, jiraToken, proxyMode, phpProxyUrl);
                 const calculator = new KpiCalculator();
                 
                 const start = new Date(startDate);
@@ -854,8 +893,17 @@
                     jql = `(${epicKeys.map(k => `parent = ${k}`).join(' OR ')}) AND ${jql}`;
                 }
 
-                showLoading('Fetching issues... This may take a moment for large datasets.');
+                console.log('Using JQL:', jql);
+                showLoading(`Fetching issues with JQL: ${jql.substring(0, 100)}...`);
+                
                 const issues = await client.fetchIssues(jql);
+                
+                console.log(`Fetched ${issues.length} issues`);
+                
+                if (issues.length === 0) {
+                    showError('No issues found for the given criteria. Check your filters and date range.');
+                    return;
+                }
                 
                 showLoading(`Calculating KPIs for ${issues.length} issues...`);
                 const kpiData = calculator.calculateKpis(issues, start, end, {
@@ -867,8 +915,8 @@
                 displayResults(kpiData);
                 showSuccess(`Successfully calculated KPIs for ${issues.length} issues!`);
             } catch (error) {
-                showError(`Error: ${error.message}`);
                 console.error('Full error:', error);
+                showError(`Error: ${error.message}`);
             }
         }
 
@@ -979,6 +1027,16 @@
             
             document.getElementById('endDate').valueAsDate = today;
             document.getElementById('startDate').valueAsDate = sixMonthsAgo;
+
+            // Show/hide PHP proxy URL field
+            document.getElementById('proxyMode').addEventListener('change', function() {
+                const phpProxyGroup = document.getElementById('phpProxyUrlGroup');
+                if (this.value === 'php') {
+                    phpProxyGroup.style.display = 'flex';
+                } else {
+                    phpProxyGroup.style.display = 'none';
+                }
+            });
         };
     </script>
 </body>
