@@ -356,12 +356,12 @@
                     <div class="input-group">
                         <label for="proxyMode">CORS Proxy</label>
                         <select id="proxyMode">
-                            <option value="extension">Browser Extension (Recommended)</option>
-                            <option value="corsproxy">CorsProxy.io</option>
-                            <option value="allorigins">AllOrigins</option>
-                            <option value="php">PHP Proxy (Self-hosted)</option>
+                            <option value="extension">Browser Extension (Recommended - Supports POST)</option>
+                            <option value="php">PHP Proxy (Self-hosted - Supports POST)</option>
+                            <option value="corsproxy">CorsProxy.io (May not work with new Jira API)</option>
+                            <option value="allorigins">AllOrigins (May not work with new Jira API)</option>
                         </select>
-                        <span class="help-text">Choose CORS bypass method</span>
+                        <span class="help-text">⚠️ Browser Extension or PHP Proxy recommended for Jira Cloud</span>
                     </div>
 
                     <div class="input-group" id="phpProxyUrlGroup" style="display: none;">
@@ -457,49 +457,80 @@
             async makeRequest(path, options = {}) {
                 const jiraUrl = `${this.baseUrl}${path}`;
                 
-                let url, headers;
+                let url, headers, fetchOptions;
                 
                 if (this.proxyMode === 'extension') {
-                    // Direct request with extension
+                    // Direct request with extension - works with POST
                     url = jiraUrl;
                     headers = {
                         'Authorization': `Basic ${this.auth}`,
                         'Accept': 'application/json',
+                        'Content-Type': 'application/json',
                         ...options.headers
                     };
+                    
+                    fetchOptions = {
+                        method: options.method || 'GET',
+                        headers: headers
+                    };
+                    
+                    if (options.body) {
+                        fetchOptions.body = options.body;
+                    }
+                    
                 } else if (this.proxyMode === 'php') {
                     // PHP proxy - send auth via custom header
                     url = this.getProxyUrl(jiraUrl);
                     headers = {
                         'X-Jira-Auth': this.auth,
                         'Accept': 'application/json',
+                        'Content-Type': 'application/json',
                         ...options.headers
                     };
+                    
+                    fetchOptions = {
+                        method: options.method || 'GET',
+                        headers: headers
+                    };
+                    
+                    if (options.body) {
+                        fetchOptions.body = options.body;
+                    }
+                    
                 } else {
-                    // Other CORS proxies
+                    // Other CORS proxies - may not support POST well
+                    // Try to convert POST to GET if possible for /search endpoint
+                    if (options.method === 'POST' && path.includes('/search')) {
+                        console.warn('CORS proxy may not support POST. Consider using Browser Extension mode.');
+                    }
+                    
                     url = this.getProxyUrl(jiraUrl);
                     headers = {
                         'Authorization': `Basic ${this.auth}`,
                         'Accept': 'application/json',
+                        'Content-Type': 'application/json',
                         'X-Requested-With': 'XMLHttpRequest',
                         ...options.headers
                     };
-                }
-
-                const fetchOptions = {
-                    method: options.method || 'GET',
-                    headers: headers
-                };
-
-                if (options.body && fetchOptions.method !== 'GET') {
-                    fetchOptions.body = options.body;
+                    
+                    fetchOptions = {
+                        method: options.method || 'GET',
+                        headers: headers
+                    };
+                    
+                    if (options.body) {
+                        fetchOptions.body = options.body;
+                    }
                 }
 
                 try {
+                    console.log('Fetching:', url, 'Method:', fetchOptions.method);
                     const response = await fetch(url, fetchOptions);
 
                     // Get response text first to handle both JSON and error cases
                     const responseText = await response.text();
+                    console.log('Response status:', response.status);
+                    console.log('Response preview:', responseText.substring(0, 500));
                     
                     if (!response.ok) {
                         console.error('Jira API Error:', response.status, responseText);
@@ -535,20 +566,32 @@
                 const issues = [];
                 let startAt = 0;
                 let total = 0;
+                let hasMoreResults = true;
 
                 do {
-                    // Use correct API endpoint with proper parameters
-                    const params = new URLSearchParams({
+                    // Use the new /rest/api/3/search/jql endpoint with POST
+                    const requestBody = {
                         jql: jql,
-                        startAt: startAt.toString(),
-                        maxResults: maxResults.toString(),
-                        fields: 'key,summary,status,issuetype,priority,created,updated,assignee,reporter,project,resolution,resolutiondate,timespent,timeoriginalestimate,timeestimate,aggregatetimespent,parent,labels',
-                        expand: 'changelog'
+                        startAt: startAt,
+                        maxResults: maxResults,
+                        fields: [
+                            'key', 'summary', 'status', 'issuetype', 'priority', 
+                            'created', 'updated', 'assignee', 'reporter', 'project', 
+                            'resolution', 'resolutiondate', 'timespent', 
+                            'timeoriginalestimate', 'timeestimate', 
+                            'aggregatetimespent', 'parent', 'labels'
+                        ],
+                        expand: ['changelog']
+                    };
+
+                    console.log('Fetching issues with body:', requestBody);
+
+                    const data = await this.makeRequest('/rest/api/3/search/jql', {
+                        method: 'POST',
+                        body: JSON.stringify(requestBody)
                     });
 
-                    const data = await this.makeRequest(`/rest/api/3/search?${params.toString()}`, {
-                        method: 'GET'
-                    });
+                    console.log('Received response:', data);
 
                     // Check if response has issues
                     if (!data || !data.issues || !Array.isArray(data.issues)) {
@@ -560,12 +603,16 @@
                     total = data.total || 0;
                     startAt += maxResults;
                     
+                    // Check if there are more results
+                    hasMoreResults = startAt < total;
+                    
                     // Add a small delay to avoid rate limiting
-                    if (startAt < total) {
+                    if (hasMoreResults) {
                         await new Promise(resolve => setTimeout(resolve, 500));
                     }
-                } while (startAt < total && total > 0);
+                } while (hasMoreResults);
 
+                console.log(`Total issues fetched: ${issues.length}`);
                 return issues;
             }
 
